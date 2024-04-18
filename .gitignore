@@ -1,0 +1,8 @@
+input/IPSC_idats/*
+input/PBMC_idats/*
+input/*bfile.{bed,bim,fam}
+*.tar
+*.tar.gz
+old/*
+*.RDS
+*.RData
