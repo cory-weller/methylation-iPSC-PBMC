@@ -36,6 +36,9 @@ if [[ ! -f 'DATA/GENOTYPES/adrd_ipsc.imputed.pruned.bed' ]]; then
         --make-bed \
         --extract DATA/GENOTYPES/adrd_ipsc.imputed.prune.in \
         --out DATA/GENOTYPES/pruned
+    rm DATA/GENOTYPES/pruned.log DATA/GENOTYPES/pruned.nosex
+
+
 fi
 
 
