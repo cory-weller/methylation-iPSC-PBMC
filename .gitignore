@@ -6,3 +6,11 @@ input/*bfile.{bed,bim,fam}
 old/*
 *.RDS
 *.RData
+olddata/*
+DATA/IPSC/*
+DATA/PBMC/*
+DATA/GENOTYPES/*
+*.bim
+*.bam
+*.bed
+*.fam
