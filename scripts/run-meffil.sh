@@ -7,6 +7,6 @@
 #SBATCH --time 2:00:00
 
 module load R/4.3
-echo "Executing: Rscript meffil.R ${@}"
+echo "Executing: Rscript scripts/meffil.R ${@}"
 
-Rscript meffil.R ${@}
+Rscript scripts/meffil.R ${@}
