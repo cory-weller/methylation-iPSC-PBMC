@@ -1,6 +1,7 @@
 input/IPSC_idats/*
 input/PBMC_idats/*
 input/*bfile.{bed,bim,fam}
+DATA/EPIC.anno.GRCh38.tsv
 *.tar
 *.tar.gz
 old/*
