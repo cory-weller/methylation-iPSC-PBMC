@@ -15,3 +15,7 @@ DATA/GENOTYPES/*
 *.bam
 *.bed
 *.fam
+slurm*out
+EWAS/*/figure
+EWAS/*/associations.csv
+MEFFIL/*
