@@ -19,11 +19,11 @@ tar -zxf PBMC_idats.tar.gz --directory DATA/PBMC
 
 
 
+# Running meffil in container
 
-
-
-
-
+```bash
+singularity shell -H ${PWD} meffil.sif
+```
 
 
 
