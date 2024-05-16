@@ -8,13 +8,12 @@ old/*
 *.RDS
 *.RData
 olddata/*
-DATA/IPSC/*
-DATA/PBMC/*
-DATA/GENOTYPES/*
+DATA/IPSC/*.idat
+DATA/PBMC/*.idat
+DATA/GENOTYPES/
 *.bim
 *.bam
 *.bed
-*.fam
 slurm*out
 EWAS/*/figure
 EWAS/*/associations.csv
