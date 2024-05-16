@@ -11,7 +11,24 @@
 #Rscript scripts/meffil-prep-samples.R ${@}
 
 
+#### CHECK SINGULARITY #############################################################################
+if ! command -v singularity &> /dev/null; then
+    echo "INFO: singularity command not found, looking for singularity module"
+    if ! command -v module &> /dev/null; then
+        echo "ERROR: module command not found. Did you mean to run this on an HPC?"
+        exit 1
+    else
+        if $(module avail singularity/3 2>&1 >/dev/null | grep -q 'No module'); then
+            echo 'ERROR: singularity cannot be found. Recheck installation?'
+            exit 1
+        else
+            echo 'INFO: module singularity found'
+            module load singularity/3
+        fi
+    fi
+else
+    echo 'INFO: singularity command found'
+fi
 
-module load singularity
 echo "Executing: singularity exec -H ${PWD} meffil.sif Rscript scripts/meffil-prep-samples.R ${@}"
 singularity exec -H ${PWD} meffil.sif Rscript scripts/meffil-prep-samples.R ${@}
