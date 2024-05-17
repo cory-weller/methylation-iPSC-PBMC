@@ -3,22 +3,24 @@
 
 # Retrieve external data
 ```bash
-module load rclone
+# module load rclone # if needed
 # Ensure rclone is configured to access the shared drive `LNG_methylation_2024`
 rclone copy --progress LNG_methylation_2024:/adrd_ipsc.imputed.tar .
 rclone copy --progress LNG_methylation_2024:/IPSC_idats.tar.gz .
 rclone copy --progress LNG_methylation_2024:/PBMC_idats.tar.gz .
+rclone copy --progress LNG_methylation_2024:/meffil.sif .
 
 tar -xf adrd_ipsc.imputed.tar --directory DATA/GENOTYPES
 tar -zxf IPSC_idats.tar.gz --directory DATA/IPSC
 tar -zxf PBMC_idats.tar.gz --directory DATA/PBMC
-
-(cd DATA/PBMC && tar -zxf ../PBMC_idats.tar.gz) && rm DATA/PBMC_idats.tar.gz
 ```
 
 
 
-
+```bash
+alias plink='singularity exec meffi.sif plink'
+alias king='singularity exec meffi.sif king'
+```
 # Running meffil in container
 
 ```bash

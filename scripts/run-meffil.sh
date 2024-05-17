@@ -30,5 +30,14 @@ else
     echo 'INFO: singularity command found'
 fi
 
+#### CHECK PLINK FILES #############################################################################
+alias plink="singularity exec -H ${PWD} meffil.sif /app/plink"
+alias king="singularity exec -H ${PWD} meffil.sif /app/king"
+alias Rscript="singularity exec -H ${PWD} meffil.sif Rscript"
+alias R="singularity exec -H ${PWD} meffil.sif R"
+
+
+
+
 echo "Executing: singularity exec -H ${PWD} meffil.sif Rscript scripts/meffil-prep-samples.R ${@}"
 singularity exec -H ${PWD} meffil.sif Rscript scripts/meffil-prep-samples.R ${@}

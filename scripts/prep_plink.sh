@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
 # Generates plink files and genotype PCs for meffil analysis
 
+alias plink='./plink'
+
+# Check plink
+# if ! command -v plink &> /dev/null; then
+#     echo "INFO: plink command not found, looking for plink module"
+#     if ! command -v module &> /dev/null; then
+#         echo "ERROR: module command not found. Did you mean to run this on an HPC?"
+#         exit 1
+#     fi
+# else
+#     module load plink/1.9
+# fi
+
 
 ipsc_bfile='DATA/GENOTYPES/adrd_ipsc.imputed.bfile'
-module load plink/1.9.0-beta4.4
+# module load plink/1.9.0-beta4.4
 
 # epic_rsIDs.txt is generated from the meffil package in R and 
 # it lists the loci on the epic array which are used by meffil 
@@ -37,11 +50,14 @@ if [[ ! -f 'DATA/GENOTYPES/adrd_ipsc.imputed.pruned.bed' ]]; then
         --extract DATA/GENOTYPES/adrd_ipsc.imputed.prune.in \
         --out DATA/GENOTYPES/pruned
     rm DATA/GENOTYPES/pruned.log DATA/GENOTYPES/pruned.nosex
+fi
 
-
+if [[ ! -f ./king ]]; then
+    wget https://www.kingrelatedness.com/Linux-king.tar.gz
+    tar -zxvf Linux-king.tar.gz
 fi
 
 
 # Generate PCs for population structure
-module load king/2.2.7
-king -b DATA/GENOTYPES/pruned.bed --pca --prefix DATA/GENOTYPES/pruned_genetic_
+# module load king/2.2.7
+./king -b DATA/GENOTYPES/pruned.bed --pca --prefix DATA/GENOTYPES/pruned_genetic_
