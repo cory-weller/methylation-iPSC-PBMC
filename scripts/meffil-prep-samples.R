@@ -16,13 +16,6 @@ arglist = list(
         help='Cell type, ipsc or pbmc'
     ),
     make_option(
-        "--threads",
-        default=1,
-        type='numeric',
-        action='store_value',
-        help='Number of threads to use'
-    ),
-    make_option(
         "--clobber",
         default=FALSE,
         action='store_true',
@@ -39,7 +32,10 @@ args <- optparse::parse_args(OptionParser(usage = usage_string, arglist))
 # install.packages('minfiData')
 # BiocManager::install("minfiData")
 # devtools::install_github("markgene/maxprobes")
-threads <- args$threads
+threads <- as.numeric(Sys.getenv('SLURM_CPUS_PER_TASK'))
+if(is.na(threads)) {
+    threads <- 1
+}
 
 library(data.table)
 library(meffil)
@@ -71,7 +67,7 @@ pbmc_idat_dir <- 'DATA/PBMC'
 ipsc_genotype_bed <- 'DATA/GENOTYPES/adrd_ipsc.imputed.bfile.bed'
 ipsc_wgs_plink_rawfile <- 'DATA/GENOTYPES/adrd_ipsc.imputed.meffil.raw'
 sara_sampleinfo_csv <- 'DATA/samplesheet.rematched.afterQC.csv'
-genetic_pc_file <- 'DATA/GENOTYPES/pruned_genetic_pc.txt'
+genetic_pc_file <- 'DATA/pruned_genetic_pc.txt'
 
 
 # Files generated during processing
