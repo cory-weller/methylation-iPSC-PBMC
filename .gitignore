@@ -33,3 +33,4 @@ methqtl_old
 *.Rdata
 *report.md
 *.csv
+*.ipynb
