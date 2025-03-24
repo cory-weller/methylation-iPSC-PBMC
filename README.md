@@ -15,7 +15,10 @@ tar -zxf IPSC_idats.tar.gz --directory DATA/IPSC
 tar -zxf PBMC_idats.tar.gz --directory DATA/PBMC
 ```
 
-
+## Gene annotations
+```bash
+wget -O DATA/gencode.v46.basic.annotation.gff3.gz https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.basic.annotation.gff3.gz
+```
 
 ```bash
 alias plink='singularity exec meffi.sif plink'
@@ -24,9 +27,27 @@ alias king='singularity exec meffi.sif king'
 # Running meffil in container
 
 ```bash
-singularity shell -H ${PWD} meffil.sif
+module load singularity
+singularity exec -H ${PWD} meffil.sif R
 ```
 
+# Generate genotype vcfs
+
+```bash
+# Get genotype VCFs for significant probes
+awk 'NR > 1 {print $2}'  methQTL/significant-eQTL-status.tsv | sort -u > DATA/GENOTYPES/methQTL-rsIDs.txt
+
+module load plink/1.9
+
+plink --recode vcf \
+	--bfile DATA/GENOTYPES/adrd_ipsc.imputed.bfile \
+	--keep-allele-order \
+	--output-chr chrM \
+	--out DATA/GENOTYPES/ipsc-methQTL-genotypes \
+	--extract DATA/GENOTYPES/methQTL-rsIDs.txt
+
+sed 's@0/0@0@g'  DATA/GENOTYPES/ipsc-methQTL-genotypes.vcf | sed 's@1/1@2@g' | sed 's@0/1@1@g' | sed 's@1/0@1@g' > DATA/GENOTYPES/ipsc-methQTL-dosage.vcf
+```
 
 
 ## 01 Create two separate `bfile` with only desired PBMC or IPSC samples
@@ -116,13 +137,20 @@ setkey(combined_samplesheet, Sample_Name)
 
 
 sample_info <- fread('sample_sentrix_ID_info.tsv')
-
-# 297 ipsc_samplesheet#
-# 74 pbmc
+```
 
 
 
 
+## methQTL Analysis with `tensorQTL`
+
+First, generate `.tsv` files to be used by tensorQTL. This is a table containing betas (methylation estimates)
+for one clone per sample, along with cromosome position coordintes and Infinium probe IDs.
+
+```bash
+Rscript ./methQTL.R PBMC
+Rscript ./methQTL.R IPSC
+```
 
 
 
@@ -183,3 +211,10 @@ Functional normalization was performed using the Meffil R package (version 1.3.3
 Principal component analysis was performed on the control matrix and the 20,000 most variable probes. 
 Principal components of the most variable normalized betas corresponding to the iPSC dataset showed a strong batch effect corresponding to the experimental plate.
 The ComBat R package was applied only in this dataset to adjust for this batch effect.
+
+## Gene Imprinting
+
+Retrieved from `https://www.geneimprint.com/site/genes-by-species`
+- Manually find and replace diamond `?` characters
+- `sed 's/, /;/g' imprinting-genes.txt`
+- `sed -i 's/, /;/g' imprinting-genes.txt`
