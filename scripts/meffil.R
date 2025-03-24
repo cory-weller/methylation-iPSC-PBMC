@@ -33,6 +33,9 @@ arglist = list(
 usage_string <- "Rscript meffil.R "
 args <- optparse::parse_args(OptionParser(usage = usage_string, arglist))
 
+# args <- list(); args$celltype <- 'ipsc'; args$clobber <- FALSE; args$threads <- 2
+# args <- list(); args$celltype <- 'pbmc'; args$clobber <- FALSE; args$threads <- 2
+
 ####################################################################################################
 # Load libraries
 ####################################################################################################
@@ -45,20 +48,25 @@ library(data.table)
 library(meffil)
 library(maxprobes)
 library(qqman)
+library(viridis)
+library(ggbeeswarm)
 set.seed(1)
 options(mc.cores=threads)
 
-celltype <- args$cell
+
+# force cell type to be upper-case
+celltype <- toupper(args$cell)
 
 
-logfile <- paste0('LOGS/', celltype, '.', scriptname, '.log')
 
 # Capture session info
+logfile <- paste0('LOGS/', celltype, '.', scriptname, '.log')
 sink(logfile, append=FALSE)
     commandArgs()
     devtools::session_info()
     paste0('using ', threads, ' thread(s)')
 sink()
+
 
 
 working_dir <- getwd()
@@ -75,7 +83,7 @@ genetic_pc_file <- 'DATA/GENOTYPES/pruned_genetic_pc.txt'
 
 
 # Files generated during processing
-ipsc_samplesheet_file <- 'DATA/ipsc_samplesheet.tsv'
+ipsc_samplesheet_file <- 'DATA/IPSC/ipsc_samplesheet.tsv'
 pbmc_samplesheet_file <- 'DATA/pbmc_samplesheet.tsv'
 
 excluded_probes_file <-     paste0('MEFFIL/', celltype, '.excluded_probes.txt')
@@ -86,6 +94,7 @@ meffil_qc2_summary_file <-  paste0('MEFFIL/', celltype, '.qc2.summary.RDS')
 meffil_genotypes_file <-    paste0('MEFFIL/', celltype, '.genotypes.RDS')
 meffil_norm_object_file <-  paste0('MEFFIL/', celltype, '.norm_object.RDS')
 meffil_beta_object_file <-  paste0('MEFFIL/', celltype, '.beta_object.RDS')
+meffil_beta_tsv_file <-  paste0('MEFFIL/', celltype, '.beta.tsv')
 meffil_EWAS_dir <-          paste0('EWAS/',   celltype, '/')
 meffil_normalization_report_dir <- paste0('MEFFIL/', celltype, '_norm')
 
@@ -113,7 +122,7 @@ format_samplesheet <- function(idat_dir, sampleinfo_csv, celltype) {
     sampleinfo <- sampleinfo[,c('Name','Sample_Name', 'Sample_Plate', 'Donor.ID','age','Sex','Original_source','status','Cell')]
     setkey(sampleinfo, Sample_Name)
 
-    samplesheet <- merge(samplesheet, sampleinfo)      # Merge into 181 shared rows
+    samplesheet <- merge(samplesheet, sampleinfo) 
 
 
     # Fix Sex values to only be F/M (or NA)
@@ -145,13 +154,13 @@ if(! file.exists(pbmc_samplesheet_file) | args$clobber==TRUE) {
     pbmc_samplesheet <- fread(pbmc_samplesheet_file)
 }
 
-# exclude BLSA samples, select clone A, otherwise clone B if A does not exist (90 remaining samples)
-ipsc_samplesheet <- ipsc_samplesheet[Original_source != 'BLSA'][order(Donor.ID)][!duplicated(Donor.ID)]
-pbmc_samplesheet <- pbmc_samplesheet[Original_source != 'BLSA'][order(Donor.ID)][!duplicated(Donor.ID)]
+# exclude BLSA samples
+ipsc_samplesheet <- ipsc_samplesheet[Original_source != 'BLSA'][order(Sample_Name)]
+pbmc_samplesheet <- pbmc_samplesheet[Original_source != 'BLSA'][order(Sample_Name)]
 
-if(celltype == 'ipsc') {
+if(celltype == 'IPSC') {
     celltype_samplesheet <- ipsc_samplesheet
-} else if(celltype == 'pbmc') {
+} else if(celltype == 'PBMC') {
     celltype_samplesheet <- pbmc_samplesheet
 }
 
@@ -170,10 +179,17 @@ if(celltype == 'ipsc') {
 if(! file.exists(meffil_genotypes_file) | args$clobber==TRUE) {
     raw_genotypes <- fread(ipsc_wgs_plink_rawfile)
     raw_genotypes <- raw_genotypes[IID %in% celltype_samplesheet$Donor.ID]
+
     raw_genotypes_2 <- copy(raw_genotypes)
     raw_genotypes_2[, FID := paste0(FID, 'A')]
     raw_genotypes_2[, IID := paste0(FID, 'A')]
-    raw_genotypes <- rbindlist(list(raw_genotypes, raw_genotypes_2))
+
+    raw_genotypes_3 <- copy(raw_genotypes)
+    raw_genotypes_3[, FID := paste0(FID, 'B')]
+    raw_genotypes_3[, IID := paste0(FID, 'B')]
+
+    raw_genotypes <- rbindlist(list(raw_genotypes, raw_genotypes_2, raw_genotypes_3))
+
     fwrite(raw_genotypes, file='.rawgenos.tmp', row.names=F, col.names=T, sep=' ')
     meffil.genotypes <- meffil::meffil.extract.genotypes(filenames='.rawgenos.tmp')
     saveRDS(meffil.genotypes, file=meffil_genotypes_file)
@@ -184,13 +200,13 @@ if(! file.exists(meffil_genotypes_file) | args$clobber==TRUE) {
 
 
 ####################################################################################################
-# Define QC parameters as specified in manuscript drift
+# Define QC parameters as specified in manuscript draft
 ####################################################################################################
 meffil.qc.parameters <- meffil::meffil.qc.parameters(
     beadnum.samples.threshold             = 0.1,
+    beadnum.cpgs.threshold                = 0.1,
     detectionp.samples.threshold          = 0.1,
     detectionp.cpgs.threshold             = 0.1, 
-    beadnum.cpgs.threshold                = 0.1,
     sex.outlier.sd                        = 5,
     snp.concordance.threshold             = 0.95,
     sample.genotype.concordance.threshold = 0.8
@@ -222,15 +238,23 @@ if(! file.exists(meffil_qc1_obj_file) | args$clobber==TRUE) {
 ####################################################################################################
 # Get samples that fail QC
 ####################################################################################################
+# IPSC:
 # as.data.table(meffil.qc1.summary$bad.samples, keep.rownames=T)
-#         rn sample.name                            issue
-#     <char>      <char>                           <char>
-# 1:    2267     NIH054A Control probe (spec2.G.34730329)
-# 2:      46     NIH060A                     Sex mismatch
-# 3: NIH060A     NIH060A                Genotype mismatch
-# 4: NIH078A     NIH078A       Methylated vs Unmethylated
-# 5:      79     NIH089A                     Sex mismatch
-# 6:      80     NIH106A                     Sex mismatch
+#        rn sample.name                            issue
+#    <char>      <char>                           <char>
+# :    4327     NIH054A Control probe (spec2.G.34730329)
+# :     115     NIH060A                     Sex mismatch
+# : NIH060A     NIH060A                Genotype mismatch
+# : NIH078A     NIH078A       Methylated vs Unmethylated
+# :     146     NIH083B                     Sex mismatch
+# :     151     NIH088B                     Sex mismatch
+# :     152     NIH089A                     Sex mismatch
+# :     153     NIH090B                     Sex mismatch
+# :     156     NIH094A                     Sex mismatch
+# :     157     NIH095B                     Sex mismatch
+# :     165     NIH106A                     Sex mismatch
+# : NIH106B     NIH106B                Detection p-value
+# :     166     NIH106B                     Sex mismatch
 meffil.failedqc <- unique(meffil.qc1.summary$bad.samples$sample.name)
 
 
@@ -265,9 +289,8 @@ if(length(meffil.failedqc)==0) {
 
 
 # Get 'bad' cpg sites according to meffil QC
-meffil.badcpgs <- grep('^cg', meffil.qc2.summary$bad.cpgs$name, value=T)
-
-
+# meffil.badcpgs <- grep('^cg', meffil.qc2.summary$bad.cpgs$name, value=T)
+meffil.badcpgs <- meffil.qc2.summary$bad.cpgs$name
 ####################################################################################################
 # Get cross-reactive probes from literature
 ####################################################################################################
@@ -281,9 +304,9 @@ if(!file.exists(excluded_probes_file) | args$clobber==TRUE) {
     # DOI: https://doi.org/10.1186/s13059-016-1066-1
     # Cross-reactive probes on the EPIC array, Table S1, 13059_2016_1066_MOESM1_ESM.csv 
 
-    xloci_pidsley <- sort(unlist(xloci[1:43254]))
+    meffil.xloci.pidsley <- sort(unlist(xloci[1:43254]))
     # get only list of CpG-targeting probes
-    meffil.xloci.pidsley <- xloci_pidsley[xloci_pidsley %like% '^cg']
+    # meffil.xloci.pidsley <- meffil.xloci_pidsley[meffil.xloci_pidsley %like% '^cg']
 
     # Get Probes from McCartney et al. 2016
     # Identification of polymorphic and off-target probe binding sites on the Illumina Infinium MethylationEPIC BeadChip
@@ -317,20 +340,20 @@ if(!file.exists(excluded_probes_file) | args$clobber==TRUE) {
 
     # Get EPIC annotation mask 
     EPIC.anno <- fread('DATA/EPIC.anno.GRCh38.tsv', header=T)
-    meffil.EPIC.probemask <- EPIC.anno[MASK.general==TRUE][probeID %like% '^cg'][probeType == 'cg'][, probeID]
+    meffil.EPIC.probemask <- EPIC.anno[MASK.general==TRUE][, probeID]
      
     # Combine all sets of probes to exclude
-    meffil.excluded_cpgs <- sort(unique(c(meffil.EPIC.probemask, meffil.xloci.pidsley, meffil.xloci.mccartney, meffil.badcpgs)))
-    writeLines(meffil.excluded_cpgs, con=excluded_probes_file)
+    meffil.excluded_probes <- sort(unique(c(meffil.EPIC.probemask, meffil.xloci.pidsley, meffil.xloci.mccartney, meffil.badcpgs)))
+    writeLines(meffil.excluded_probes, con=excluded_probes_file)
 } else {
-    meffil.excluded_cpgs <- readLines(excluded_probes_file)
+    meffil.excluded_probes <- readLines(excluded_probes_file)
 }
+
 
 ####################################################################################################
 # Perform quantile normalization
 ####################################################################################################
 if(!file.exists(meffil_norm_object_file) | args$clobber == TRUE) {
-    # 
     meffil.norm <- meffil::meffil.normalize.quantiles(meffil.qc2, random.effects="Slide", number.pcs=10)
     saveRDS(meffil.norm, file=meffil_norm_object_file)
 } else {
@@ -341,13 +364,29 @@ if(!file.exists(meffil_norm_object_file) | args$clobber == TRUE) {
 # Calculate beta values
 ####################################################################################################
 if(!file.exists(meffil_beta_object_file) | args$clobber == TRUE) {
-    meffil.beta <- meffil::meffil.normalize.samples(meffil.norm, cpglist.remove=meffil.excluded_cpgs)
+    meffil.beta <- meffil::meffil.normalize.samples(meffil.norm, cpglist.remove=meffil.excluded_probes)
+    # Subset probes only to autosomal sites
+    autosomal.sites <- meffil::meffil.get.autosomal.sites('epic')
+    #autosomal.sites <- grep('^cg', autosomal.sites, value=T)
+    autosomal.sites <- intersect(autosomal.sites, rownames(meffil.beta))
+    meffil.beta <- meffil.beta[autosomal.sites,]
     saveRDS(meffil.beta, file=meffil_beta_object_file)
 } else {
     meffil.beta <- readRDS(meffil_beta_object_file)
 }
 
-#quit(status=0)
+####################################################################################################
+# Save all-samples betas tsv
+####################################################################################################
+
+    meffil.beta.dt <- as.data.table(meffil.beta)
+    fwrite(data.table(POS=rownames(meffil.beta), meffil.beta.dt), file=paste0('MEFFIL/', celltype, '.beta-ALL.tsv'), sep='\t', row.names=F,col.names=T, quote=F)
+
+## Check cell type heterogeneity
+meffil.cellcounts <- meffil.estimate.cell.counts.from.betas(meffil.beta, 'andrews and bakulski cord blood')
+meffil.cellcounts <- as.data.table(meffil.cellcounts, keep.rownames=T)
+fwrite(meffil.cellcounts, file='cellcounts.csv', quote=F)
+
 
 ####################################################################################################
 # Calculate methylation PCs
@@ -381,20 +420,33 @@ setwd(working_dir)
 # Subset samples to those with genotype data
 ####################################################################################################
 # Set of iPSC samples that have methylation data AND genotypes
-if(celltype == 'ipsc') {
-    colnames(meffil.beta) <- unlist(strsplit(colnames(meffil.beta), split='[AB]$'))
+if(celltype == 'IPSC') {
+    # Select clone A if it exists, else clone B
+    ipsc.dat <- data.table('ID'=sort(colnames(meffil.beta)))
+    ipsc.dat[, donor := gsub('[AB]$','',ID)]
+    ipsc.dat[, N := 1:.N, by=donor]
+    samples_chosen <- ipsc.dat[N==1,ID]
+    meffil.beta <- meffil.beta[, samples_chosen]
+    colnames(meffil.beta) <- gsub('[AB]','',colnames(meffil.beta))
 }
+
+
 
 complete_ewas_set <- sort(intersect(colnames(meffil.beta), colnames(meffil.genotypes)))
 meffil.beta <- meffil.beta[, complete_ewas_set]
 
 ####################################################################################################
-# Subset probes only to autosomal sites
+# Save final beta values as tsv
 ####################################################################################################
-autosomal.sites <- meffil::meffil.get.autosomal.sites('epic')
-autosomal.sites <- grep('^cg', autosomal.sites, value=T)
-autosomal.sites <- intersect(autosomal.sites, rownames(meffil.beta))
-meffil.beta <- meffil.beta[autosomal.sites,]
+if(!file.exists(meffil_beta_tsv_file) | args$clobber == TRUE) {
+    # Export tsv of beta values
+    meffil.beta.dt <- as.data.table(meffil.beta)
+    fwrite(data.table(POS=rownames(meffil.beta), meffil.beta.dt), file=meffil_beta_tsv_file, sep='\t', row.names=F,col.names=T, quote=F)
+} else {
+    meffil.beta.dt <- fread(meffil_beta_tsv_file)
+}
+
+
 
 # Read in and format genetics PCs as data.frame
 genetics_pcs <- fread(genetic_pc_file)
@@ -409,10 +461,9 @@ genetics_pcs <- as.data.frame(genetics_pcs)
 rownames(genetics_pcs) <- genetics_pcs$FID
 genetics_pcs$FID <- NULL
 
-#raw_genotypes <- raw_genotypes[FID %in% complete_ewas_set]
-if(celltype=='ipsc') {
+if(celltype=='IPSC') {
     celltype_samplesheet <- celltype_samplesheet[order(Donor.ID)][!duplicated(Donor.ID)][Donor.ID  %in% complete_ewas_set]
-} else if(celltype=='pbmc') {
+} else if(celltype=='PBMC') {
     celltype_samplesheet <- celltype_samplesheet[order(Name)][Donor.ID  %in% complete_ewas_set]
 }
 ewas_variable <- celltype_samplesheet[, age]
@@ -461,12 +512,10 @@ ewas_covariates <- as.data.frame(cbind(sex_covs, pc_methylation_covs, pc_genotyp
 ewas.ret <- meffil.ewas(meffil.beta, variable=ewas_variable, covariates=ewas_covariates)
 
 # Generate EWAS report
-
 if (!dir.exists(meffil_EWAS_dir)) {dir.create(meffil_EWAS_dir)}
 setwd(meffil_EWAS_dir)
 
 ewas.parameters <- meffil.ewas.parameters(sig.threshold=5e-8, max.plots=5, model='all')
-#candidate.sites <- c("cg04946709","cg06710937","cg12177922","cg15817705","cg20299935","cg21784396")
 ewas.summary <- meffil.ewas.summary(ewas.ret,
                                     meffil.beta,
                                     parameters=ewas.parameters)								
@@ -491,60 +540,28 @@ EWAS.dt <- EWAS.dt[CHR %in% as.character(1:22)]
 EWAS.dt[, 'CHR' := as.numeric(CHR)]
 
 # Format for qqman
-setnames(EWAS.dt, 'probeID', 'SNP')
 setnames(EWAS.dt, 'start', 'BP')
 setnames(EWAS.dt, 'p', 'P')
+setkey(EWAS.dt, CHR, BP, probeID, P)
+
+# # Plot QQ Plot
+# png(paste0('EWAS/', celltype, '/qq.png'))
+# qq(EWAS.dt$P)
+# dev.off()
+
+# # Plot Manhattan
+# png(paste0('EWAS/', celltype, '/manhattan.png'), width = 1800, height = 480, units='px')
+# manhattan(EWAS.dt)
+# dev.off()
 
 
-# Plot QQ Plot
-png(paste0('EWAS/', celltype, '/qq.png'))
-qq(EWAS.dt$P)
-dev.off()
 
-# Plot Manhattan
-png(paste0('EWAS/', celltype, '/manhattan.png'), width = 1800, height = 480, units='px')
-manhattan(EWAS.dt)
-dev.off()
+# Save tsv output
+EWAS.out <- EWAS.dt[, .SD, .SDcols=c('CHR','BP','probeID','P')]
+fwrite(EWAS.out , file=paste0('EWAS/', celltype, '.tsv'), row.names=F, col.names=T, sep='\t', quote=F)
 
 # g <- ggplot(EWAS.dt, aes(x=start, y=-1*log10(p))) + geom_point() + facet_grid(.~CHR, scales='free_x', space='free_x')
 # ggsave(g, file=paste0(meffil_EWAS_dir, '/', celltype, '_EWAS_manhattan.png'), width=55, height=15, units='cm')
 
 
 quit(status=0)
-####################################################################################################
-# Define covariates prior to EWAS
-####################################################################################################
-# Genotype PCs
-genotype.pc.matrix <- raw_genotypes[FID %in% colnames(meffil$beta)]
-genotype.pc.matrix <- genotype.pc.matrix[, grep('^rs', colnames(genotype.pc.matrix), value=T), with=F]
-genotype.pcs <- prcomp(genotype.pc.matrix, center=T, scale.=T)$x[, 1:5]
-colnames(genotype.pcs) <- paste0('geno.', colnames(genotype.pcs))
-genotype.pcs <- as.data.table(prcomp(genotype.pc.matrix, center=T, scale.=T)$x)[, 1:5]
-
-
-
-dim(meffil$beta)
-# [1] 865859    159
-
-# EWAS
-# Methylation ~ age
-# Covariates: 
-# Sex
-# Sample Plate
-# Genotype PC 1-5
-# Methylation PC 1-5
-
-
-
-
-
-### UP TO HERE
-
-saveRDS(meffil$beta, file='meffil.beta.autosomal.RDS')
-#write.table(meffil$beta, file="IPSC-meffil-normalized-beta.tsv", col.names= TRUE, row.names = TRUE, quote = F, sep = "\t")
-
-
-
-
-
-methylation.pcs <- methylation.pcs[, 1:5]
