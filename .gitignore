@@ -18,3 +18,5 @@ slurm*out
 EWAS/*/figure
 EWAS/*/associations.csv
 MEFFIL/*
+methQTL/*
+LOGS/*
